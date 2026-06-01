@@ -1,8 +1,16 @@
 # claude-limit-statusline
 
+[![npm version](https://img.shields.io/npm/v/claude-limit-statusline.svg)](https://www.npmjs.com/package/claude-limit-statusline)
+[![npm downloads](https://img.shields.io/npm/dm/claude-limit-statusline.svg)](https://www.npmjs.com/package/claude-limit-statusline)
+[![license](https://img.shields.io/npm/l/claude-limit-statusline.svg)](./LICENSE)
+[![node](https://img.shields.io/node/v/claude-limit-statusline.svg)](https://nodejs.org)
+
 A [Claude Code](https://code.claude.com/docs) status line that shows your **real
 subscription limits** — the 5‑hour session window and the 7‑day weekly window —
 with a **live reset countdown**.
+
+📦 [npm](https://www.npmjs.com/package/claude-limit-statusline) ·
+🔗 [GitHub](https://github.com/ann0nip/claude-limit-statusline)
 
 ```
 🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | ⏳ Session 17% · resets in 0h47m (23:12) | 📅 Week 10% · resets in 2d 21h (Jun 03 19:54)
