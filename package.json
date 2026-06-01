@@ -1,0 +1,42 @@
+{
+  "name": "claude-limit-statusline",
+  "version": "0.2.0",
+  "description": "Claude Code status line that shows your REAL Pro/Max subscription limits — 5-hour session and 7-day weekly usage with a live reset countdown. Uses the official rate_limits payload, not a local estimate.",
+  "type": "commonjs",
+  "bin": {
+    "cc-limits": "bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "demo": "node bin/cli.js --demo"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "statusline",
+    "status-line",
+    "rate-limits",
+    "usage",
+    "pro",
+    "max",
+    "subscription",
+    "anthropic"
+  ],
+  "author": "Ann0nip (https://github.com/ann0nip)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ann0nip/claude-limit-statusline.git"
+  },
+  "homepage": "https://github.com/ann0nip/claude-limit-statusline#readme",
+  "bugs": {
+    "url": "https://github.com/ann0nip/claude-limit-statusline/issues"
+  }
+}
