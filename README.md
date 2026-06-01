@@ -13,12 +13,11 @@ with a **live reset countdown**.
 🔗 [GitHub](https://github.com/ann0nip/claude-limit-statusline)
 
 ```
-🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | ⏳ Session 17% · resets in 0h47m (23:12) | 📅 Week 10% · resets in 2d 21h (Jun 03 19:54)
+🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% · resets in 0h47m | 📅 Week 10%
 ```
 
-The line **auto-fits your terminal width** — on a narrow window it sheds detail
-gracefully (see [Narrow terminals](#narrow-terminals)) while always keeping the
-session/week percentages.
+That's the default (`medium`). Pick the [size](#sizes) that fits your terminal —
+from `full` (both reset countdowns) down to `bare` (just the two percentages).
 
 Unlike tools that estimate the 5‑hour block from local logs, this reads the
 **official `rate_limits` payload** that Claude Code provides on stdin — the same
@@ -48,10 +47,10 @@ for you (merging, never clobbering your other settings). Then open a **new**
 Claude Code session and send one message — `rate_limits` populates after the
 first API response.
 
-Want only the two limits? Pass your display options straight through:
+Want a different size? Pass your display options straight through:
 
 ```bash
-cc-limits --install --segments=session,week
+cc-limits --install --size=compact
 ```
 
 To remove it again:
@@ -64,6 +63,12 @@ cc-limits --uninstall
 > `node` + script path, so it works even under nvm/Volta where a globally
 > installed command isn't on the `PATH` of the non‑login shell Claude Code uses
 > for the status line.
+
+> **Upgrading from 0.3.x / 0.2.x?** The old adaptive‑width behavior is gone —
+> replaced by fixed [sizes](#sizes) (default `medium`). Re‑run `cc-limits
+> --install` (optionally with `--size=…`) to refresh the baked‑in command; any
+> leftover `--width` / `--no-adapt` flags are now ignored. The session icon also
+> changed from ⏳ to 🕔.
 
 <details>
 <summary>Manual setup (if you prefer)</summary>
@@ -91,45 +96,44 @@ If the bar stays blank (nvm/Volta `PATH` issue), use absolute paths instead —
 | --- | --- | --- |
 | `🤖 model` | Active model | local |
 | `🧠 42k (4%)` | Tokens in the current context window | local |
-| `⏳ Session 17% · resets in 0h47m (23:12)` | **Real** 5‑hour limit used + reset | server |
-| `📅 Week 10% · resets in 2d 21h (Jun 03 19:54)` | **Real** 7‑day limit used + reset | server |
-
-The reset countdowns appear when the terminal is wide enough; on narrower
-windows they drop out automatically (week first, then session). Use `--reset` to
-cap which ones may ever show.
+| `🕔 Session 17% · resets in 0h47m (23:12)` | **Real** 5‑hour limit used (+ reset) | server |
+| `📅 Week 10% · resets in 2d 21h (Jun 03 19:54)` | **Real** 7‑day limit used (+ reset) | server |
 
 The percentage **is** your "how close am I to the limit" gauge. Subscription
 limits are dynamic, so Anthropic does not expose a fixed token cap — only a
 percentage, which is exactly what this surfaces.
 
 Before the first API response (and right after `/compact`) the session segment
-shows `⏳ Session --` until fresh data arrives.
+shows `🕔 Session --` until fresh data arrives.
 
-### Narrow terminals
+## Sizes
 
-The line **auto-shrinks to fit your terminal width**, so it stays readable on a
-small window and expands again when you make the window bigger — no config
-needed. It sheds detail in steps, dropping the least important parts first and
-**always keeping the session/week percentages**:
+Claude Code shows the status line on a single line and truncates anything past
+the terminal width. So instead of guessing, you **pick the size that fits** —
+set it once with `--size` (or `CC_LIMITS_SIZE`). The default is `medium`.
 
 ```text
-full     🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | ⏳ Session 17% · resets in 0h47m (23:12) | 📅 Week 10% · resets in 2d 21h (Jun 03 19:54)
-          ↓ week countdown drops
-medium   🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | ⏳ Session 17% · resets in 0h47m (23:12) | 📅 Week 10%
-          ↓ session countdown drops
-plain    🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | ⏳ Session 17% | 📅 Week 10%
-          ↓ labels shorten, model/context trim away
-narrow   🤖 Opus 4.8 | 🧠 42k | ⏳ S 17% | 📅 W 10%
-tiny     ⏳ S 17% | 📅 W 10%
+full     🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | 🕔 Session 17% · resets in 0h47m (23:12) | 📅 Week 10% · resets in 2d 21h (Jun 03 19:54)
+medium   🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% · resets in 0h47m | 📅 Week 10%
+compact  🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% | 📅 Week 10%
+mini     🤖 Opus 4.8 | 🧠 42k | 🕔 S 17% | 📅 W 10%
+bare     🕔 S 17% | 📅 W 10%
 ```
 
-The width comes from the terminal itself (read via `/dev/tty`), so it follows
-live window resizes. Disable it with `--no-adapt` (or `CC_LIMITS_ADAPT=0`) to
-always print the full line, or pin a width with `--width=N` / `CC_LIMITS_WIDTH=N`.
+| Size | Shows |
+| --- | --- |
+| `full` | Model (with context length), tokens + %, both limits with reset countdown & clock |
+| `medium` | Model, tokens + %, session countdown, both percentages *(default)* |
+| `compact` | Model, tokens + %, both percentages — no countdowns |
+| `mini` | Model, tokens, short labels |
+| `bare` | Just the two limits |
 
-> **Upgrading from 0.2.0?** Adaptive width is new and on by default. If you
-> preferred the old always-full line (and let Claude Code truncate it), add
-> `--no-adapt`.
+```bash
+cc-limits --install --size=compact
+```
+
+You can still fine‑tune any size with [`--segments`](#flags) and
+[`--reset`](#flags) below.
 
 ## Configuration
 
@@ -144,24 +148,23 @@ Pick **which segments** to show (and their order). The four segments are
 "command": "cc-limits --no-context"
 ```
 
-Cap **which reset countdowns** may show (they still drop out on narrow
-terminals):
+Cap **which reset countdowns** a size may show (this can hide a countdown,
+never add one):
 
 ```jsonc
-"command": "cc-limits --reset=session"   // never show the week countdown
-"command": "cc-limits --no-reset"        // just percentages, no countdowns
+"command": "cc-limits --size=full --reset=session"  // full, but no week countdown
+"command": "cc-limits --no-reset"                   // just percentages, no countdowns
 ```
 
 ### Flags
 
 | Flag | Description |
 | --- | --- |
+| `--size=full\|medium\|compact\|mini\|bare` | How much detail to show (default `medium`) |
 | `--segments=a,b,c` | Allowlist + order. Subset of `model,context,session,week` |
 | `--no-<segment>` | Hide one segment (e.g. `--no-context`). Repeatable |
 | `--reset=both\|session\|week\|none` | Cap which reset countdowns may show (default `both`) |
 | `--no-reset` | Shorthand for `--reset=none` |
-| `--no-adapt` | Don't shrink to terminal width; always print the full line |
-| `--width=N` | Assume `N` columns instead of auto-detecting the terminal width |
 | `--no-color` | Disable ANSI colors |
 | `--demo` | Print a sample line (no stdin needed) |
 | `-h`, `--help` | Show help |
@@ -172,10 +175,9 @@ Equivalent to the flags, handy if you don't want to edit the command string:
 
 | Env var | Default | Description |
 | --- | --- | --- |
+| `CC_LIMITS_SIZE` | `medium` | `full` / `medium` / `compact` / `mini` / `bare` |
 | `CC_LIMITS_SEGMENTS` | `model,context,session,week` | Segments + order |
 | `CC_LIMITS_RESET` | `both` | `both` / `session` / `week` / `none` |
-| `CC_LIMITS_ADAPT` | `1` | Set to `0` to disable adaptive width (=`--no-adapt`) |
-| `CC_LIMITS_WIDTH` | — | Force a column width instead of auto-detecting |
 | `CC_LIMITS_WARN` | `70` | % at/above which a limit turns yellow |
 | `CC_LIMITS_CRIT` | `90` | % at/above which a limit turns red |
 | `CC_LIMITS_SEP` | `" \| "` | Separator between segments |
@@ -183,7 +185,7 @@ Equivalent to the flags, handy if you don't want to edit the command string:
 
 ```bash
 cc-limits --demo
-cc-limits --segments=session,week --reset=session --demo
+cc-limits --size=compact --demo
 ```
 
 ## How it works

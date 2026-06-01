@@ -18,7 +18,6 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const tty = require("tty");
 
 const argv = process.argv.slice(2);
 
@@ -58,9 +57,19 @@ if (segSel != null && segSel !== "") {
   SEGMENTS = ALL_SEGMENTS.filter((s) => !argv.includes(`--no-${s}`));
 }
 
-// Which reset countdowns are *allowed*: both | session | week | none. This is
-// a cap — the adaptive width logic shows them only while they fit, dropping the
-// week countdown before the session one. Default both (full line when wide).
+// Size preset: how much detail to show. The user picks the one that fits their
+// terminal — predictable, no width guessing. Default "medium".
+const SIZES = ["full", "medium", "compact", "mini", "bare"];
+let SIZE = (
+  getFlagValue("--size") ||
+  process.env.CC_LIMITS_SIZE ||
+  "medium"
+).toLowerCase();
+if (!SIZES.includes(SIZE)) SIZE = "medium";
+
+// Which reset countdowns are *allowed*: both | session | week | none. This only
+// caps what a preset would show (it can hide a countdown, never add one).
+// Default both (no extra cap on top of the chosen preset).
 let RESET_MODE = (
   getFlagValue("--reset") ||
   process.env.CC_LIMITS_RESET ||
@@ -77,86 +86,6 @@ const SEP = process.env.CC_LIMITS_SEP || " | ";
 const NO_COLOR =
   argv.includes("--no-color") ||
   (process.env.NO_COLOR != null && process.env.NO_COLOR !== "");
-
-// Adaptive width: progressively shrink the line so it fits the terminal,
-// keeping the session/week percentages last to die. On by default; disable
-// with --no-adapt or CC_LIMITS_ADAPT=0 to always render the full line.
-const ADAPT =
-  !argv.includes("--no-adapt") &&
-  process.env.CC_LIMITS_ADAPT !== "0" &&
-  process.env.CC_LIMITS_ADAPT !== "false";
-
-// Detect the usable terminal width. The status-line JSON payload does NOT
-// carry the width, and Claude Code captures our stdout (so stdout.columns is
-// undefined), so we ask the controlling terminal directly via /dev/tty — that
-// reflects the real width and updates when the user resizes. Falls back
-// through stdout/COLUMNS to "unknown" (null => render full line).
-function termWidth() {
-  const override = getFlagValue("--width") || process.env.CC_LIMITS_WIDTH;
-  if (override != null && override !== "") {
-    const n = Number(override);
-    if (Number.isFinite(n) && n > 0) return n;
-    return null; // explicit but invalid width => skip adaptation, full line
-  }
-  if (process.stdout && process.stdout.columns) return process.stdout.columns;
-  let fd;
-  try {
-    fd = fs.openSync("/dev/tty", "r");
-    if (tty.isatty(fd)) {
-      // tty.ReadStream takes ownership of fd; destroy() closes it (async).
-      // Do NOT also closeSync it below, or we double-close / reuse the fd.
-      const s = new tty.ReadStream(fd);
-      const c = s.columns;
-      s.destroy();
-      fd = undefined;
-      if (c) return c;
-    }
-  } catch (_) {
-    /* no controlling terminal — fall through */
-  } finally {
-    if (fd !== undefined) {
-      try {
-        fs.closeSync(fd);
-      } catch (_) {
-        /* ignore */
-      }
-    }
-  }
-  const env = Number(process.env.COLUMNS);
-  if (Number.isFinite(env) && env > 0) return env;
-  return null;
-}
-
-// Terminal display width of one Unicode code point: emoji / CJK render as 2
-// columns, everything else as 1. A small wcwidth-lite so we measure the line
-// the way the terminal draws it (e.g. ⏳ is one code unit but two columns).
-function isWide(cp) {
-  return (
-    cp >= 0x1100 &&
-    (cp <= 0x115f || // Hangul Jamo
-      cp === 0x2329 ||
-      cp === 0x232a ||
-      cp === 0x231a ||
-      cp === 0x231b ||
-      (cp >= 0x23e9 && cp <= 0x23f3) || // ⏳ and clock/hourglass emoji
-      (cp >= 0x2600 && cp <= 0x27bf) || // misc symbols & dingbats
-      (cp >= 0x2e80 && cp <= 0xa4cf && cp !== 0x303f) || // CJK
-      (cp >= 0xac00 && cp <= 0xd7a3) || // Hangul syllables
-      (cp >= 0xf900 && cp <= 0xfaff) || // CJK compat
-      (cp >= 0xfe30 && cp <= 0xfe4f) ||
-      (cp >= 0xff00 && cp <= 0xff60) ||
-      (cp >= 0xffe0 && cp <= 0xffe6) ||
-      (cp >= 0x1f000 && cp <= 0x1faff)) // emoji planes (🤖 🧠 📅 …)
-  );
-}
-
-// Visible display width of a string, ignoring ANSI color escapes.
-function visibleLen(s) {
-  const plain = s.replace(/\x1b\[[0-9;]*m/g, "");
-  let w = 0;
-  for (const ch of plain) w += isWide(ch.codePointAt(0)) ? 2 : 1;
-  return w;
-}
 
 // ---------- colors ----------
 const C = {
@@ -216,13 +145,15 @@ function fmtClock(epochSec, withDate) {
 }
 
 // ---------- segment renderers ----------
-// Each renderer takes a `v` (variant) describing how compact to be:
-//   v.reset   2 = "· resets in Xd Yh (clock)", 1 = "· resets in Xd Yh", 0 = none
-//   v.short   true => short labels (Session→S, Week→W), trimmed model, no ctx %
+// A `v` (variant) describes how compact to be:
+//   v.model  "full" = name as-is | "trim" = drop "(…)" suffix | "off" = hide
+//   v.ctx    "pct"  = "🧠 172k (17%)" | "tokens" = "🧠 172k" | "off" = hide
+//   v.short  true => short limit labels (Session→S, Week→W)
+//   v.rs/v.rw  reset detail for session/week: 2 = "…Xd Yh (clock)", 1 = "…Xd Yh", 0 = none
 function renderModel(data, v) {
   let model = clean(data?.model?.display_name || "Claude");
   // Drop trailing parenthetical (e.g. "Opus 4.8 (1M context)" → "Opus 4.8").
-  if (v.short) model = model.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (v.model === "trim") model = model.replace(/\s*\([^)]*\)\s*$/, "").trim();
   return paint("🤖 " + model, C.cyan);
 }
 function renderContext(data, v) {
@@ -231,10 +162,11 @@ function renderContext(data, v) {
     (Number(cw.total_input_tokens) || 0) +
     (Number(cw.total_output_tokens) || 0);
   let s = "🧠 " + humanTokens(tokens);
-  if (!v.short && cw.used_percentage != null) s += ` (${round(cw.used_percentage)}%)`;
+  if (v.ctx === "pct" && cw.used_percentage != null) {
+    s += ` (${round(cw.used_percentage)}%)`;
+  }
   return paint(s, C.gray);
 }
-// `reset`: 2 = "· resets in Xd Yh (clock)", 1 = "· resets in Xd Yh", 0 = none.
 function renderLimit(limit, { icon, label, shortLabel, withDate }, { short, reset }) {
   const lbl = short ? shortLabel : label;
   if (!limit || limit.used_percentage == null) {
@@ -249,23 +181,22 @@ function renderLimit(limit, { icon, label, shortLabel, withDate }, { short, rese
   return s;
 }
 
-// Build one full status line at a given compactness variant. The variant gives
-// independent reset levels for session (`rs`) and week (`rw`); each is also
-// capped by the user's --reset choice.
+// Build one status line at a given variant. Reset levels (rs/rw) are also
+// capped by the user's --reset choice (it can hide a countdown, never add one).
 function buildLine(data, v) {
   const rl = data?.rate_limits || {};
   const cap = (which, level) => (resetAllowed(which) ? level : 0);
   const out = [];
   for (const seg of SEGMENTS) {
     if (seg === "model") {
-      if (!v.dropModel) out.push(renderModel(data, v));
+      if (v.model !== "off") out.push(renderModel(data, v));
     } else if (seg === "context") {
-      if (!v.dropContext) out.push(renderContext(data, v));
+      if (v.ctx !== "off") out.push(renderContext(data, v));
     } else if (seg === "session") {
       out.push(
         renderLimit(
           rl.five_hour,
-          { icon: "⏳", label: "Session", shortLabel: "S", withDate: false },
+          { icon: "🕔", label: "Session", shortLabel: "S", withDate: false },
           { short: v.short, reset: cap("session", v.rs) }
         )
       );
@@ -282,32 +213,17 @@ function buildLine(data, v) {
   return out.join(SEP);
 }
 
-// Compactness variants, richest → poorest. We pick the richest one that fits
-// the terminal. The week countdown is dropped before the session one, and the
-// session/week percentages survive every tier.
-const VARIANTS = [
-  { rs: 2, rw: 2, short: false },                               // full: both resets + clock
-  { rs: 2, rw: 1, short: false },                               // week loses its clock
-  { rs: 2, rw: 0, short: false },                               // medium: session reset only
-  { rs: 1, rw: 0, short: false },                               // session reset, no clock
-  { rs: 0, rw: 0, short: false },                               // plain %, full labels
-  { rs: 0, rw: 0, short: true },                                // short labels, trim model/ctx
-  { rs: 0, rw: 0, short: true, dropContext: true },             // drop context
-  { rs: 0, rw: 0, short: true, dropContext: true, dropModel: true }, // limits only
-];
+// Size presets, richest → smallest. The user picks one with --size / CC_LIMITS_SIZE.
+const PRESETS = {
+  full:    { model: "full", ctx: "pct",    short: false, rs: 2, rw: 2 },
+  medium:  { model: "trim", ctx: "pct",    short: false, rs: 1, rw: 0 },
+  compact: { model: "trim", ctx: "pct",    short: false, rs: 0, rw: 0 },
+  mini:    { model: "trim", ctx: "tokens", short: true,  rs: 0, rw: 0 },
+  bare:    { model: "off",  ctx: "off",     short: true,  rs: 0, rw: 0 },
+};
 
 function render(data) {
-  const full = buildLine(data, VARIANTS[0]);
-  if (!ADAPT) return full;
-  const w = termWidth();
-  if (w == null) return full; // width unknown — never truncate ourselves
-  const usable = w - 1; // small safety margin for emoji width rounding
-  if (visibleLen(full) <= usable) return full;
-  for (let i = 1; i < VARIANTS.length; i++) {
-    const line = buildLine(data, VARIANTS[i]);
-    if (visibleLen(line) <= usable) return line;
-  }
-  return buildLine(data, VARIANTS[VARIANTS.length - 1]);
+  return buildLine(data, PRESETS[SIZE] || PRESETS.medium);
 }
 
 // ---------- demo payload ----------
@@ -341,37 +257,35 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "real Pro/Max rate limits (5h session + 7d week) with reset countdowns.",
       "",
       "Setup (writes ~/.claude/settings.json for you):",
-      "  cc-limits --install                      configure the status line",
-      "  cc-limits --install --segments=session,week   ...with display options",
-      "  cc-limits --uninstall                    remove it again",
+      "  cc-limits --install                  configure the status line",
+      "  cc-limits --install --size=compact   ...at a chosen size",
+      "  cc-limits --uninstall                remove it again",
       "",
       "Or set it manually in ~/.claude/settings.json:",
       '  "statusLine": { "type": "command", "command": "cc-limits" }',
+      "",
+      "Size (pick the one that fits your terminal — default medium):",
+      "  --size=full      🤖 Opus 4.8 (1M context) | 🧠 172k (17%) | 🕔 Session 14% · resets in 2h55m (04:00) | 📅 Week 12% · resets…",
+      "  --size=medium    🤖 Opus 4.8 | 🧠 172k (17%) | 🕔 Session 14% · resets in 2h55m | 📅 Week 12%",
+      "  --size=compact   🤖 Opus 4.8 | 🧠 172k (17%) | 🕔 Session 14% | 📅 Week 12%",
+      "  --size=mini      🤖 Opus 4.8 | 🧠 172k | 🕔 S 14% | 📅 W 12%",
+      "  --size=bare      🕔 S 14% | 📅 W 12%",
       "",
       "Segments (default: all, in this order): model, context, session, week",
       "  --segments=session,week   Show only these, in this order",
       "  --no-context              Hide a single segment (repeatable)",
       "  --no-model --no-week      ...",
       "",
-      "Reset countdowns:",
+      "Reset countdowns (a preset's countdowns can be hidden, never added):",
       "  --reset=both|session|week|none   Which resets MAY show (default both)",
       "  --no-reset                       Same as --reset=none",
-      "",
-      "Narrow terminals (on by default):",
-      "  The line auto-shrinks to fit the terminal width: it drops the week",
-      "  countdown first, then the session countdown, then shortens labels —",
-      "  always keeping the session/week %. Width is read from the terminal",
-      "  (via /dev/tty) and follows live resizes.",
-      "  --no-adapt        Always print the full line (let CC truncate it)",
-      "  --width=N         Assume N columns instead of auto-detecting",
       "",
       "Other flags: --demo, --no-color, -h/--help",
       "",
       "Env vars:",
+      "  CC_LIMITS_SIZE=full|medium|compact|mini|bare",
       "  CC_LIMITS_SEGMENTS=model,context,session,week",
       "  CC_LIMITS_RESET=both|session|week|none",
-      "  CC_LIMITS_ADAPT=0    disable adaptive width (=--no-adapt)",
-      "  CC_LIMITS_WIDTH=N    force a column width",
       "  CC_LIMITS_WARN=70    yellow threshold (% of a limit)",
       "  CC_LIMITS_CRIT=90    red threshold",
       "  CC_LIMITS_SEP=' | '  segment separator",
@@ -435,7 +349,10 @@ function doUninstall() {
 }
 
 if (argv.includes("--install")) {
-  const passthrough = argv.filter((a) => a !== "--install" && a !== "--uninstall");
+  // Bake only persistent display flags into the command — never the one-shot
+  // ones (--install/--demo/--help) or the status line would break.
+  const TRANSIENT = new Set(["--install", "--uninstall", "--demo", "--help", "-h"]);
+  const passthrough = argv.filter((a) => !TRANSIENT.has(a));
   doInstall(passthrough);
   process.exit(0);
 }
