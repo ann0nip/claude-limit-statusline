@@ -1,6 +1,6 @@
 {
   "name": "claude-limit-statusline",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Claude Code status line that shows your REAL Pro/Max subscription limits — 5-hour session and 7-day weekly usage with a live reset countdown. Uses the official rate_limits payload, not a local estimate.",
   "type": "commonjs",
   "bin": {
