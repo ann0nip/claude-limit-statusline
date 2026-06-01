@@ -28,9 +28,35 @@ This shows the **subscription rate limits** that Anthropic exposes only to
 
 ```bash
 npm install -g claude-limit-statusline
+cc-limits --install
 ```
 
-Then point your status line at it in `~/.claude/settings.json`:
+That's it. `--install` writes the `statusLine` entry into `~/.claude/settings.json`
+for you (merging, never clobbering your other settings). Then open a **new**
+Claude Code session and send one message — `rate_limits` populates after the
+first API response.
+
+Want only the two limits? Pass your display options straight through:
+
+```bash
+cc-limits --install --segments=session,week
+```
+
+To remove it again:
+
+```bash
+cc-limits --uninstall
+```
+
+> **Why `--install` instead of editing by hand?** It records an **absolute**
+> `node` + script path, so it works even under nvm/Volta where a globally
+> installed command isn't on the `PATH` of the non‑login shell Claude Code uses
+> for the status line.
+
+<details>
+<summary>Manual setup (if you prefer)</summary>
+
+Add this to `~/.claude/settings.json`:
 
 ```json
 {
@@ -41,14 +67,11 @@ Then point your status line at it in `~/.claude/settings.json`:
 }
 ```
 
-Open a **new** Claude Code session and send one message — `rate_limits` populates
-after the first API response.
+If the bar stays blank (nvm/Volta `PATH` issue), use absolute paths instead —
+`"command": "/path/to/node /path/to/cli.js"` (find them with `which node` and
+`npm root -g`), which is exactly what `cc-limits --install` does automatically.
 
-> **nvm users:** a globally installed command may not be on the `PATH` of the
-> non‑login shell Claude Code uses for the status line. If the bar stays blank,
-> use an absolute path instead, e.g.
-> `"command": "/path/to/node /path/to/cli.js"` (find them with `which node` and
-> `npm root -g`).
+</details>
 
 ## Output
 

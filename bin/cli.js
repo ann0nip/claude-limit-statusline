@@ -15,6 +15,10 @@
  * Docs: https://code.claude.com/docs/en/statusline
  */
 
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
 const argv = process.argv.slice(2);
 
 // ---------- arg / env helpers ----------
@@ -218,7 +222,12 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "Reads Claude Code's JSON status-line payload on stdin and prints your",
       "real Pro/Max rate limits (5h session + 7d week) with reset countdowns.",
       "",
-      "Usage in ~/.claude/settings.json:",
+      "Setup (writes ~/.claude/settings.json for you):",
+      "  cc-limits --install                      configure the status line",
+      "  cc-limits --install --segments=session,week   ...with display options",
+      "  cc-limits --uninstall                    remove it again",
+      "",
+      "Or set it manually in ~/.claude/settings.json:",
       '  "statusLine": { "type": "command", "command": "cc-limits" }',
       "",
       "Segments (default: all, in this order): model, context, session, week",
@@ -241,6 +250,69 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  NO_COLOR             disable colors",
     ].join("\n")
   );
+  process.exit(0);
+}
+
+// ---------- install / uninstall into ~/.claude/settings.json ----------
+function settingsPath() {
+  return path.join(os.homedir(), ".claude", "settings.json");
+}
+function quoteArg(s) {
+  return /[\s"\\]/.test(s) ? '"' + s.replace(/(["\\])/g, "\\$1") + '"' : s;
+}
+function buildCommand(passthrough) {
+  // Absolute node + script path => immune to the non-login-shell PATH issue
+  // (e.g. nvm) that can leave a globally-installed `cc-limits` off the PATH.
+  return [process.execPath, __filename, ...passthrough].map(quoteArg).join(" ");
+}
+function readSettings(p) {
+  let raw;
+  try {
+    raw = fs.readFileSync(p, "utf8");
+  } catch (e) {
+    if (e.code === "ENOENT") return { settings: {}, existed: false };
+    console.error("cc-limits: cannot read " + p + ": " + e.message);
+    process.exit(1);
+  }
+  try {
+    return { settings: raw.trim() ? JSON.parse(raw) : {}, existed: true };
+  } catch {
+    console.error(
+      "cc-limits: " + p + " is not valid JSON — aborting so it isn't clobbered.\n" +
+        "Fix or remove it, then re-run, or configure the status line manually."
+    );
+    process.exit(1);
+  }
+}
+function doInstall(passthrough) {
+  const p = settingsPath();
+  const { settings, existed } = readSettings(p);
+  settings.statusLine = { type: "command", command: buildCommand(passthrough) };
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(settings, null, 2) + "\n");
+  console.log("cc-limits: status line " + (existed ? "updated in " : "written to ") + p);
+  console.log("→ " + settings.statusLine.command);
+  console.log("Open a NEW Claude Code session and send one message to see it.");
+}
+function doUninstall() {
+  const p = settingsPath();
+  const { settings, existed } = readSettings(p);
+  if (!existed || !settings.statusLine) {
+    console.log("cc-limits: no status line configured in " + p + " — nothing to do.");
+    return;
+  }
+  delete settings.statusLine;
+  fs.writeFileSync(p, JSON.stringify(settings, null, 2) + "\n");
+  console.log("cc-limits: removed status line from " + p);
+}
+
+if (argv.includes("--install")) {
+  const passthrough = argv.filter((a) => a !== "--install" && a !== "--uninstall");
+  doInstall(passthrough);
+  process.exit(0);
+}
+if (argv.includes("--uninstall")) {
+  doUninstall();
   process.exit(0);
 }
 
