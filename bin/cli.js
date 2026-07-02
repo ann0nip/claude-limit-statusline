@@ -45,16 +45,23 @@ function numEnv(name, def) {
 }
 
 // ---------- config ----------
-const ALL_SEGMENTS = ["model", "context", "session", "week"];
+const ALL_SEGMENTS = ["model", "context", "session", "week", "lights"];
+// "lights" (Claude session traffic lights) is opt-in so existing setups keep
+// their exact width. Enable with --lights, CC_LIMITS_LIGHTS=1, or --segments.
+const DEFAULT_SEGMENTS = ["model", "context", "session", "week"];
 
 // Which segments to show. --segments / CC_LIMITS_SEGMENTS = allowlist (and order).
-// Otherwise the full set minus any --no-<segment> flags.
+// Otherwise the default set minus any --no-<segment> flags.
 let SEGMENTS;
 const segSel = getFlagValue("--segments") || process.env.CC_LIMITS_SEGMENTS;
 if (segSel != null && segSel !== "") {
   SEGMENTS = parseList(segSel).filter((s) => ALL_SEGMENTS.includes(s));
 } else {
-  SEGMENTS = ALL_SEGMENTS.filter((s) => !argv.includes(`--no-${s}`));
+  SEGMENTS = DEFAULT_SEGMENTS.filter((s) => !argv.includes(`--no-${s}`));
+  const lightsEnv = process.env.CC_LIMITS_LIGHTS;
+  if (argv.includes("--lights") || (lightsEnv != null && lightsEnv !== "" && lightsEnv !== "0")) {
+    SEGMENTS.push("lights");
+  }
 }
 
 // Size preset: how much detail to show. The user picks the one that fits their
@@ -79,6 +86,22 @@ if (argv.includes("--no-reset")) RESET_MODE = "none";
 function resetAllowed(which) {
   return RESET_MODE === "both" || RESET_MODE === which;
 }
+
+// How a reset is rendered: countdown ("resets in 0h47m"), clock ("resets at
+// 20:02"), or both. Default "both" preserves the historical output — countdown
+// always, clock added only where the size preset has room (full). Like
+// --reset, this never adds a reset to a size that doesn't show one.
+const RESET_STYLES = ["countdown", "clock", "both"];
+let RESET_STYLE = (
+  getFlagValue("--reset-style") ||
+  process.env.CC_LIMITS_RESET_STYLE ||
+  "both"
+).toLowerCase();
+if (!RESET_STYLES.includes(RESET_STYLE)) RESET_STYLE = "both";
+
+// Clock format for reset times: 24 (default, "20:02") or 12 ("8:02pm").
+const CLOCK_12H =
+  (getFlagValue("--clock") || process.env.CC_LIMITS_CLOCK || "24") === "12";
 
 const WARN_PCT = numEnv("CC_LIMITS_WARN", 70);
 const CRIT_PCT = numEnv("CC_LIMITS_CRIT", 90);
@@ -139,9 +162,27 @@ function fmtCountdown(epochSec) {
 }
 function fmtClock(epochSec, withDate) {
   const d = new Date(epochSec * 1000);
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  let time;
+  if (CLOCK_12H) {
+    const h = ((d.getHours() + 11) % 12) + 1;
+    const ap = d.getHours() < 12 ? "am" : "pm";
+    time = `${h}:${pad(d.getMinutes())}${ap}`;
+  } else {
+    time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
   if (withDate) return `${MON[d.getMonth()]} ${pad(d.getDate())} ${time}`;
   return time;
+}
+
+// One reset blurb, honoring --reset-style. `level` comes from the size preset
+// (2 = room for countdown+clock, 1 = countdown only) so a style never widens
+// a size beyond what it already showed.
+function fmtReset(epochSec, withDate, level) {
+  if (epochSec <= Date.now() / 1000) return "resets now";
+  if (RESET_STYLE === "clock") return "resets at " + fmtClock(epochSec, withDate);
+  if (RESET_STYLE === "countdown") return "resets in " + fmtCountdown(epochSec);
+  const clock = level >= 2 ? ` (${fmtClock(epochSec, withDate)})` : "";
+  return `resets in ${fmtCountdown(epochSec)}${clock}`;
 }
 
 // ---------- segment renderers ----------
@@ -175,10 +216,83 @@ function renderLimit(limit, { icon, label, shortLabel, withDate }, { short, rese
   const p = round(limit.used_percentage);
   let s = `${icon} ${lbl} ${paint(p + "%", pctColor(p))}`;
   if (limit.resets_at > 0 && reset > 0) {
-    const clock = reset >= 2 ? ` (${fmtClock(limit.resets_at, withDate)})` : "";
-    s += paint(` · resets in ${fmtCountdown(limit.resets_at)}${clock}`, C.dim);
+    s += paint(" · " + fmtReset(limit.resets_at, withDate, reset), C.dim);
   }
   return s;
+}
+
+// ---------- session traffic lights (opt-in) ----------
+// Reads the .csl status files written by the CC Status hook plugin
+// (https://github.com/ann0nip/claude-status-lights) under ~/.claude/projects/.
+// Loose file-format coupling only: if the plugin isn't installed or no
+// sessions are live, the segment hides itself entirely.
+const LIGHT_STATES = ["waiting", "active", "compacting", "idle"];
+const LIGHT_DOT = { waiting: "🟠", active: "🟢", compacting: "🔵", idle: "⚪" };
+
+function pidAlive(pid) {
+  if (!(pid > 0)) return true; // no pid recorded — assume alive
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e && e.code === "EPERM"; // exists but not ours
+  }
+}
+
+function scanSessionLights() {
+  const root = path.join(os.homedir(), ".claude", "projects");
+  let dirs;
+  try {
+    dirs = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const counts = { waiting: 0, active: 0, compacting: 0, idle: 0 };
+  let total = 0;
+  for (const dir of dirs) {
+    if (!dir.isDirectory()) continue;
+    const sub = path.join(root, dir.name);
+    let files;
+    try {
+      files = fs.readdirSync(sub);
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      if (!f.endsWith(".csl")) continue;
+      let rec;
+      try {
+        rec = JSON.parse(fs.readFileSync(path.join(sub, f), "utf8"));
+      } catch {
+        continue;
+      }
+      if (!pidAlive(Number(rec.pid))) continue;
+      const state = String(rec.state || "idle");
+      if (counts[state] == null) continue;
+      counts[state]++;
+      total++;
+    }
+  }
+  return total > 0 ? { counts, total } : null;
+}
+
+// Compact and unambiguous: one dot+count per non-empty state, most urgent
+// first ("🟠1 🟢2"). Orange leading = a session is waiting for your input.
+// Short variant (mini/bare) collapses to the aggregate dot + total ("🟠3").
+function renderLights(v, demo) {
+  const scan = demo
+    ? { counts: { waiting: 1, active: 2, compacting: 0, idle: 1 }, total: 4 }
+    : scanSessionLights();
+  if (!scan) return null;
+  const { counts, total } = scan;
+  if (v.short) {
+    const agg = LIGHT_STATES.find((s) => counts[s] > 0) || "idle";
+    return LIGHT_DOT[agg] + total;
+  }
+  const parts = LIGHT_STATES.filter((s) => counts[s] > 0).map(
+    (s) => LIGHT_DOT[s] + counts[s]
+  );
+  return parts.join(" ");
 }
 
 // Build one status line at a given variant. Reset levels (rs/rw) are also
@@ -208,6 +322,9 @@ function buildLine(data, v) {
           { short: v.short, reset: cap("week", v.rw) }
         )
       );
+    } else if (seg === "lights") {
+      const lights = renderLights(v, DEMO_MODE);
+      if (lights) out.push(lights);
     }
   }
   return out.join(SEP);
@@ -227,6 +344,8 @@ function render(data) {
 }
 
 // ---------- demo payload ----------
+let DEMO_MODE = false;
+
 function demoPayload() {
   const now = Math.floor(Date.now() / 1000);
   return {
@@ -271,21 +390,31 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --size=mini      🤖 Opus 4.8 | 🧠 172k | 🕔 S 14% | 📅 W 12%",
       "  --size=bare      🕔 S 14% | 📅 W 12%",
       "",
-      "Segments (default: all, in this order): model, context, session, week",
+      "Segments (default: model, context, session, week):",
       "  --segments=session,week   Show only these, in this order",
       "  --no-context              Hide a single segment (repeatable)",
       "  --no-model --no-week      ...",
+      "  --lights                  Add Claude session traffic lights (🟠1 🟢2).",
+      "                            Needs the CC Status plugin's .csl files;",
+      "                            hides itself when there's no data.",
       "",
       "Reset countdowns (a preset's countdowns can be hidden, never added):",
       "  --reset=both|session|week|none   Which resets MAY show (default both)",
       "  --no-reset                       Same as --reset=none",
+      "  --reset-style=countdown|clock|both",
+      "                        countdown 'resets in 0h47m' | clock 'resets at",
+      "                        20:02' | both = countdown (+clock on full)",
+      "  --clock=24|12         Reset clock format (default 24)",
       "",
       "Other flags: --demo, --no-color, -h/--help",
       "",
       "Env vars:",
       "  CC_LIMITS_SIZE=full|medium|compact|mini|bare",
-      "  CC_LIMITS_SEGMENTS=model,context,session,week",
+      "  CC_LIMITS_SEGMENTS=model,context,session,week,lights",
+      "  CC_LIMITS_LIGHTS=1   add the session traffic-lights segment",
       "  CC_LIMITS_RESET=both|session|week|none",
+      "  CC_LIMITS_RESET_STYLE=countdown|clock|both",
+      "  CC_LIMITS_CLOCK=24|12",
       "  CC_LIMITS_WARN=70    yellow threshold (% of a limit)",
       "  CC_LIMITS_CRIT=90    red threshold",
       "  CC_LIMITS_SEP=' | '  segment separator",
@@ -362,11 +491,13 @@ if (argv.includes("--uninstall")) {
 }
 
 if (argv.includes("--demo")) {
+  DEMO_MODE = true;
   out(render(demoPayload()));
   process.exit(0);
 }
 
 if (process.stdin.isTTY) {
+  DEMO_MODE = true;
   out(
     render(demoPayload()) +
       "  " +
