@@ -13,7 +13,7 @@ with a **live reset countdown**.
 🔗 [GitHub](https://github.com/ann0nip/claude-limit-statusline)
 
 ```
-🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% · resets in 0h47m | 📅 Week 10%
+🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% · resets at 20:16 | 📅 Week 10%
 ```
 
 That's the default (`medium`). Pick the [size](#sizes) that fits your terminal —
@@ -64,6 +64,10 @@ cc-limits --uninstall
 > installed command isn't on the `PATH` of the non‑login shell Claude Code uses
 > for the status line.
 
+> **Upgrading from 0.4.x?** Resets now show the local time by default
+> (`resets at 20:16`) instead of a countdown. Prefer the old look? Re-run
+> `cc-limits --install --reset-style=countdown` (or `both`).
+
 > **Upgrading from 0.3.x / 0.2.x?** The old adaptive‑width behavior is gone —
 > replaced by fixed [sizes](#sizes) (default `medium`). Re‑run `cc-limits
 > --install` (optionally with `--size=…`) to refresh the baked‑in command; any
@@ -96,8 +100,8 @@ If the bar stays blank (nvm/Volta `PATH` issue), use absolute paths instead —
 | --- | --- | --- |
 | `🤖 model` | Active model | local |
 | `🧠 42k (4%)` | Tokens in the current context window | local |
-| `🕔 Session 17% · resets in 0h47m (23:12)` | **Real** 5‑hour limit used (+ reset) | server |
-| `📅 Week 10% · resets in 2d 21h (Jun 03 19:54)` | **Real** 7‑day limit used (+ reset) | server |
+| `🕔 Session 17% · resets at 23:12` | **Real** 5‑hour limit used (+ reset) | server |
+| `📅 Week 10% · resets at Jun 03 19:54` | **Real** 7‑day limit used (+ reset) | server |
 
 The percentage **is** your "how close am I to the limit" gauge. Subscription
 limits are dynamic, so Anthropic does not expose a fixed token cap — only a
@@ -113,8 +117,8 @@ the terminal width. So instead of guessing, you **pick the size that fits** —
 set it once with `--size` (or `CC_LIMITS_SIZE`). The default is `medium`.
 
 ```text
-full     🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | 🕔 Session 17% · resets in 0h47m (23:12) | 📅 Week 10% · resets in 2d 21h (Jun 03 19:54)
-medium   🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% · resets in 0h47m | 📅 Week 10%
+full     🤖 Opus 4.8 (1M context) | 🧠 42k (4%) | 🕔 Session 17% · resets at 23:12 | 📅 Week 10% · resets at Jun 03 19:54
+medium   🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% · resets at 23:12 | 📅 Week 10%
 compact  🤖 Opus 4.8 | 🧠 42k (4%) | 🕔 Session 17% | 📅 Week 10%
 mini     🤖 Opus 4.8 | 🧠 42k | 🕔 S 17% | 📅 W 10%
 bare     🕔 S 17% | 📅 W 10%
@@ -159,31 +163,32 @@ never add one):
 
 ### Reset display style
 
-By default a reset shows as a countdown (`resets in 0h47m`), with the wall
-clock added in parentheses only on `full`. Prefer the local time instead?
-Pick a style with `--reset-style` (it re-formats the resets a size already
-shows — it never adds one, so your chosen size keeps fitting):
+By default a reset shows the local wall-clock time (`resets at 20:16` — the
+weekly one includes the date). Prefer a countdown? Pick a style with
+`--reset-style` (it re-formats the resets a size already shows — it never adds
+one, so your chosen size keeps fitting):
 
 ```text
+--reset-style=clock       🕔 Session 17% · resets at 20:16              ← default
 --reset-style=countdown   🕔 Session 17% · resets in 0h47m
---reset-style=clock       🕔 Session 17% · resets at 20:16
---reset-style=both        🕔 Session 17% · resets in 0h47m (20:16)   ← default
+--reset-style=both        🕔 Session 17% · resets in 0h47m (20:16)     (clock part only on full)
 ```
 
-The weekly reset includes the date in clock style (`resets at Jul 05 16:54`).
 Prefer 12-hour times? Add `--clock=12` (`resets at 8:16pm`). When a reset time
 has already passed, all styles show `resets now`.
 
 ```bash
-cc-limits --install --size=medium --reset-style=clock
+cc-limits --install --size=medium --reset-style=countdown
 ```
 
 ### Session traffic lights (opt-in)
 
-If you also run the [CC Status](https://github.com/ann0nip/claude-status-lights)
-widget, its Claude Code plugin writes live per-session state files. Add the
-`lights` segment to see all your Claude sessions at a glance, right in the
-status line:
+This segment reads the live per-session state files (`.csl`) written by the
+[CC Status](https://github.com/ann0nip/claude-status-lights) Claude Code
+plugin — today that plugin ships with (and is auto-installed by) the CC Status
+widget. `cc-limits` itself has no dependency on it: with no data the segment
+simply hides. Add `lights` to see all your Claude sessions at a glance, right
+in the status line:
 
 ```text
 🟠1 🟢2 ⚪1        1 waiting for input · 2 working · 1 idle
@@ -213,7 +218,7 @@ are filtered out by checking the recorded process is still alive.
 | `--lights` | Append the [session traffic lights](#session-traffic-lights-opt-in) segment |
 | `--reset=both\|session\|week\|none` | Cap which reset countdowns may show (default `both`) |
 | `--no-reset` | Shorthand for `--reset=none` |
-| `--reset-style=countdown\|clock\|both` | Countdown, local time, or both (default `both`) |
+| `--reset-style=clock\|countdown\|both` | Local time, countdown, or both (default `clock`) |
 | `--clock=24\|12` | Clock format for reset times (default `24`) |
 | `--no-color` | Disable ANSI colors |
 | `--demo` | Print a sample line (no stdin needed) |
@@ -229,7 +234,7 @@ Equivalent to the flags, handy if you don't want to edit the command string:
 | `CC_LIMITS_SEGMENTS` | `model,context,session,week` | Segments + order (`lights` available) |
 | `CC_LIMITS_LIGHTS` | — | Set to `1` to append the session traffic lights |
 | `CC_LIMITS_RESET` | `both` | `both` / `session` / `week` / `none` |
-| `CC_LIMITS_RESET_STYLE` | `both` | `countdown` / `clock` / `both` |
+| `CC_LIMITS_RESET_STYLE` | `clock` | `clock` / `countdown` / `both` |
 | `CC_LIMITS_CLOCK` | `24` | `24` / `12` hour clock for reset times |
 | `CC_LIMITS_WARN` | `70` | % at/above which a limit turns yellow |
 | `CC_LIMITS_CRIT` | `90` | % at/above which a limit turns red |

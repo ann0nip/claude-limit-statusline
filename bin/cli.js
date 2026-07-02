@@ -87,17 +87,16 @@ function resetAllowed(which) {
   return RESET_MODE === "both" || RESET_MODE === which;
 }
 
-// How a reset is rendered: countdown ("resets in 0h47m"), clock ("resets at
-// 20:02"), or both. Default "both" preserves the historical output — countdown
-// always, clock added only where the size preset has room (full). Like
-// --reset, this never adds a reset to a size that doesn't show one.
+// How a reset is rendered: clock ("resets at 20:02", default), countdown
+// ("resets in 0h47m"), or both (countdown + clock where the size preset has
+// room). Like --reset, this never adds a reset to a size that doesn't show one.
 const RESET_STYLES = ["countdown", "clock", "both"];
 let RESET_STYLE = (
   getFlagValue("--reset-style") ||
   process.env.CC_LIMITS_RESET_STYLE ||
-  "both"
+  "clock"
 ).toLowerCase();
-if (!RESET_STYLES.includes(RESET_STYLE)) RESET_STYLE = "both";
+if (!RESET_STYLES.includes(RESET_STYLE)) RESET_STYLE = "clock";
 
 // Clock format for reset times: 24 (default, "20:02") or 12 ("8:02pm").
 const CLOCK_12H =
@@ -384,8 +383,8 @@ if (argv.includes("--help") || argv.includes("-h")) {
       '  "statusLine": { "type": "command", "command": "cc-limits" }',
       "",
       "Size (pick the one that fits your terminal — default medium):",
-      "  --size=full      🤖 Opus 4.8 (1M context) | 🧠 172k (17%) | 🕔 Session 14% · resets in 2h55m (04:00) | 📅 Week 12% · resets…",
-      "  --size=medium    🤖 Opus 4.8 | 🧠 172k (17%) | 🕔 Session 14% · resets in 2h55m | 📅 Week 12%",
+      "  --size=full      🤖 Opus 4.8 (1M context) | 🧠 172k (17%) | 🕔 Session 14% · resets at 04:00 | 📅 Week 12% · resets at…",
+      "  --size=medium    🤖 Opus 4.8 | 🧠 172k (17%) | 🕔 Session 14% · resets at 04:00 | 📅 Week 12%",
       "  --size=compact   🤖 Opus 4.8 | 🧠 172k (17%) | 🕔 Session 14% | 📅 Week 12%",
       "  --size=mini      🤖 Opus 4.8 | 🧠 172k | 🕔 S 14% | 📅 W 12%",
       "  --size=bare      🕔 S 14% | 📅 W 12%",
@@ -401,9 +400,9 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "Reset countdowns (a preset's countdowns can be hidden, never added):",
       "  --reset=both|session|week|none   Which resets MAY show (default both)",
       "  --no-reset                       Same as --reset=none",
-      "  --reset-style=countdown|clock|both",
-      "                        countdown 'resets in 0h47m' | clock 'resets at",
-      "                        20:02' | both = countdown (+clock on full)",
+      "  --reset-style=clock|countdown|both   (default clock)",
+      "                        clock 'resets at 20:02' | countdown 'resets in",
+      "                        0h47m' | both = countdown (+clock on full)",
       "  --clock=24|12         Reset clock format (default 24)",
       "",
       "Other flags: --demo, --no-color, -h/--help",
