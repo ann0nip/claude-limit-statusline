@@ -141,9 +141,8 @@ You can still fine‑tune any size with [`--segments`](#flags) and
 
 ## Configuration
 
-Pick **which segments** to show (and their order). The segments are
-`model`, `context`, `session`, `week`, and the opt-in
-[`lights`](#session-traffic-lights-opt-in).
+Pick **which segments** to show (and their order). The four segments are
+`model`, `context`, `session`, `week`.
 
 ```jsonc
 // Only the two limits, nothing else:
@@ -181,41 +180,13 @@ has already passed, all styles show `resets now`.
 cc-limits --install --size=medium --reset-style=countdown
 ```
 
-### Session traffic lights (opt-in)
-
-This segment reads the live per-session state files (`.csl`) written by the
-[CC Status](https://github.com/ann0nip/claude-status-lights) Claude Code
-plugin — today that plugin ships with (and is auto-installed by) the CC Status
-widget. `cc-limits` itself has no dependency on it: with no data the segment
-simply hides. Add `lights` to see all your Claude sessions at a glance, right
-in the status line:
-
-```text
-🟠1 🟢2 ⚪1        1 waiting for input · 2 working · 1 idle
-```
-
-Orange first means **a session somewhere needs your input**. States: 🟠 waiting,
-🟢 active, 🔵 compacting, ⚪ idle. On `mini`/`bare` it collapses to the
-aggregate dot plus a total (`🟠4`).
-
-```bash
-cc-limits --install --lights                 # append the segment
-cc-limits --install --segments=lights,session,week   # or place it anywhere
-```
-
-It's **off by default** (so existing setups keep their exact width), and it
-hides itself entirely when there's no data — no CC Status plugin installed, or
-no live sessions — so it never shows a stale or empty segment. Dead sessions
-are filtered out by checking the recorded process is still alive.
-
 ### Flags
 
 | Flag | Description |
 | --- | --- |
 | `--size=full\|medium\|compact\|mini\|bare` | How much detail to show (default `medium`) |
-| `--segments=a,b,c` | Allowlist + order. Subset of `model,context,session,week,lights` |
+| `--segments=a,b,c` | Allowlist + order. Subset of `model,context,session,week` |
 | `--no-<segment>` | Hide one segment (e.g. `--no-context`). Repeatable |
-| `--lights` | Append the [session traffic lights](#session-traffic-lights-opt-in) segment |
 | `--reset=both\|session\|week\|none` | Cap which reset countdowns may show (default `both`) |
 | `--no-reset` | Shorthand for `--reset=none` |
 | `--reset-style=clock\|countdown\|both` | Local time, countdown, or both (default `clock`) |
@@ -231,8 +202,7 @@ Equivalent to the flags, handy if you don't want to edit the command string:
 | Env var | Default | Description |
 | --- | --- | --- |
 | `CC_LIMITS_SIZE` | `medium` | `full` / `medium` / `compact` / `mini` / `bare` |
-| `CC_LIMITS_SEGMENTS` | `model,context,session,week` | Segments + order (`lights` available) |
-| `CC_LIMITS_LIGHTS` | — | Set to `1` to append the session traffic lights |
+| `CC_LIMITS_SEGMENTS` | `model,context,session,week` | Segments + order |
 | `CC_LIMITS_RESET` | `both` | `both` / `session` / `week` / `none` |
 | `CC_LIMITS_RESET_STYLE` | `clock` | `clock` / `countdown` / `both` |
 | `CC_LIMITS_CLOCK` | `24` | `24` / `12` hour clock for reset times |
