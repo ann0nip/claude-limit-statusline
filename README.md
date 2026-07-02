@@ -7,7 +7,7 @@
 
 A [Claude Code](https://code.claude.com/docs) status line that shows your **real
 subscription limits** — the 5‑hour session window and the 7‑day weekly window —
-with a **live reset countdown**.
+and **when they reset** (local time by default, or a countdown — your pick).
 
 📦 [npm](https://www.npmjs.com/package/claude-limit-statusline) ·
 🔗 [GitHub](https://github.com/ann0nip/claude-limit-statusline)
@@ -17,7 +17,8 @@ with a **live reset countdown**.
 ```
 
 That's the default (`medium`). Pick the [size](#sizes) that fits your terminal —
-from `full` (both reset countdowns) down to `bare` (just the two percentages).
+from `full` (everything, both reset times) down to `bare` (just the two
+percentages).
 
 Unlike tools that estimate the 5‑hour block from local logs, this reads the
 **official `rate_limits` payload** that Claude Code provides on stdin — the same
@@ -126,9 +127,9 @@ bare     🕔 S 17% | 📅 W 10%
 
 | Size | Shows |
 | --- | --- |
-| `full` | Model (with context length), tokens + %, both limits with reset countdown & clock |
-| `medium` | Model, tokens + %, session countdown, both percentages *(default)* |
-| `compact` | Model, tokens + %, both percentages — no countdowns |
+| `full` | Model (with context length), tokens + %, both limits with reset times |
+| `medium` | Model, tokens + %, session reset time, both percentages *(default)* |
+| `compact` | Model, tokens + %, both percentages — no resets |
 | `mini` | Model, tokens, short labels |
 | `bare` | Just the two limits |
 
@@ -136,8 +137,8 @@ bare     🕔 S 17% | 📅 W 10%
 cc-limits --install --size=compact
 ```
 
-You can still fine‑tune any size with [`--segments`](#flags) and
-[`--reset`](#flags) below.
+You can still fine‑tune any size with [`--segments`](#flags),
+[`--reset`](#flags), and [`--reset-style`](#reset-display-style) below.
 
 ## Configuration
 
@@ -152,12 +153,11 @@ Pick **which segments** to show (and their order). The four segments are
 "command": "cc-limits --no-context"
 ```
 
-Cap **which reset countdowns** a size may show (this can hide a countdown,
-never add one):
+Cap **which resets** a size may show (this can hide a reset, never add one):
 
 ```jsonc
-"command": "cc-limits --size=full --reset=session"  // full, but no week countdown
-"command": "cc-limits --no-reset"                   // just percentages, no countdowns
+"command": "cc-limits --size=full --reset=session"  // full, but no week reset
+"command": "cc-limits --no-reset"                   // just percentages, no resets
 ```
 
 ### Reset display style
@@ -187,7 +187,7 @@ cc-limits --install --size=medium --reset-style=countdown
 | `--size=full\|medium\|compact\|mini\|bare` | How much detail to show (default `medium`) |
 | `--segments=a,b,c` | Allowlist + order. Subset of `model,context,session,week` |
 | `--no-<segment>` | Hide one segment (e.g. `--no-context`). Repeatable |
-| `--reset=both\|session\|week\|none` | Cap which reset countdowns may show (default `both`) |
+| `--reset=both\|session\|week\|none` | Cap which resets may show (default `both`) |
 | `--no-reset` | Shorthand for `--reset=none` |
 | `--reset-style=clock\|countdown\|both` | Local time, countdown, or both (default `clock`) |
 | `--clock=24\|12` | Clock format for reset times (default `24`) |
@@ -226,8 +226,8 @@ program parses it and reads:
 - `rate_limits.seven_day.used_percentage` / `.resets_at`
 - `context_window.*` for the token/context segment
 
-`resets_at` is Unix epoch seconds; the countdown is computed against the current
-time. Everything runs with **zero dependencies** for fast startup.
+`resets_at` is Unix epoch seconds; reset times and countdowns are computed from
+it locally. Everything runs with **zero dependencies** for fast startup.
 
 ## License
 
