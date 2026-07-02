@@ -67,9 +67,10 @@ let SIZE = (
 ).toLowerCase();
 if (!SIZES.includes(SIZE)) SIZE = "medium";
 
-// Which reset countdowns are *allowed*: both | session | week | none. This only
-// caps what a preset would show (it can hide a countdown, never add one).
-// Default both (no extra cap on top of the chosen preset).
+// Which resets are *allowed*: both | session | week | none | auto. This only
+// caps what a preset would show (it can hide a reset, never add one).
+// "auto" shows a reset only once that window is at/above the warn threshold —
+// quiet while you're far from the limit, informative when it matters.
 let RESET_MODE = (
   getFlagValue("--reset") ||
   process.env.CC_LIMITS_RESET ||
@@ -77,7 +78,7 @@ let RESET_MODE = (
 ).toLowerCase();
 if (argv.includes("--no-reset")) RESET_MODE = "none";
 function resetAllowed(which) {
-  return RESET_MODE === "both" || RESET_MODE === which;
+  return RESET_MODE === "both" || RESET_MODE === "auto" || RESET_MODE === which;
 }
 
 // How a reset is rendered: clock ("resets at 20:02", default), countdown
@@ -207,7 +208,8 @@ function renderLimit(limit, { icon, label, shortLabel, withDate }, { short, rese
   }
   const p = round(limit.used_percentage);
   let s = `${icon} ${lbl} ${paint(p + "%", pctColor(p))}`;
-  if (limit.resets_at > 0 && reset > 0) {
+  const nearLimit = RESET_MODE !== "auto" || p >= WARN_PCT;
+  if (limit.resets_at > 0 && reset > 0 && nearLimit) {
     s += paint(" · " + fmtReset(limit.resets_at, withDate, reset), C.dim);
   }
   return s;
@@ -308,9 +310,11 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "  --no-context              Hide a single segment (repeatable)",
       "  --no-model --no-week      ...",
       "",
-      "Reset countdowns (a preset's countdowns can be hidden, never added):",
-      "  --reset=both|session|week|none   Which resets MAY show (default both)",
-      "  --no-reset                       Same as --reset=none",
+      "Resets (a preset's resets can be hidden, never added):",
+      "  --reset=both|session|week|none|auto",
+      "                        Which resets MAY show (default both). auto =",
+      "                        only once that limit is at/above the warn %",
+      "  --no-reset            Same as --reset=none",
       "  --reset-style=clock|countdown|both   (default clock)",
       "                        clock 'resets at 20:02' | countdown 'resets in",
       "                        0h47m' | both = countdown (+clock on full)",
@@ -321,7 +325,7 @@ if (argv.includes("--help") || argv.includes("-h")) {
       "Env vars:",
       "  CC_LIMITS_SIZE=full|medium|compact|mini|bare",
       "  CC_LIMITS_SEGMENTS=model,context,session,week",
-      "  CC_LIMITS_RESET=both|session|week|none",
+      "  CC_LIMITS_RESET=both|session|week|none|auto",
       "  CC_LIMITS_RESET_STYLE=countdown|clock|both",
       "  CC_LIMITS_CLOCK=24|12",
       "  CC_LIMITS_WARN=70    yellow threshold (% of a limit)",

@@ -158,6 +158,8 @@ Cap **which resets** a size may show (this can hide a reset, never add one):
 ```jsonc
 "command": "cc-limits --size=full --reset=session"  // full, but no week reset
 "command": "cc-limits --no-reset"                   // just percentages, no resets
+"command": "cc-limits --reset=auto"                 // resets appear only once a
+                                                    // limit hits the warn % (70)
 ```
 
 ### Reset display style
@@ -187,7 +189,7 @@ cc-limits --install --size=medium --reset-style=countdown
 | `--size=full\|medium\|compact\|mini\|bare` | How much detail to show (default `medium`) |
 | `--segments=a,b,c` | Allowlist + order. Subset of `model,context,session,week` |
 | `--no-<segment>` | Hide one segment (e.g. `--no-context`). Repeatable |
-| `--reset=both\|session\|week\|none` | Cap which resets may show (default `both`) |
+| `--reset=both\|session\|week\|none\|auto` | Cap which resets may show (default `both`). `auto` = only at/above the warn % |
 | `--no-reset` | Shorthand for `--reset=none` |
 | `--reset-style=clock\|countdown\|both` | Local time, countdown, or both (default `clock`) |
 | `--clock=24\|12` | Clock format for reset times (default `24`) |
@@ -203,7 +205,7 @@ Equivalent to the flags, handy if you don't want to edit the command string:
 | --- | --- | --- |
 | `CC_LIMITS_SIZE` | `medium` | `full` / `medium` / `compact` / `mini` / `bare` |
 | `CC_LIMITS_SEGMENTS` | `model,context,session,week` | Segments + order |
-| `CC_LIMITS_RESET` | `both` | `both` / `session` / `week` / `none` |
+| `CC_LIMITS_RESET` | `both` | `both` / `session` / `week` / `none` / `auto` |
 | `CC_LIMITS_RESET_STYLE` | `clock` | `clock` / `countdown` / `both` |
 | `CC_LIMITS_CLOCK` | `24` | `24` / `12` hour clock for reset times |
 | `CC_LIMITS_WARN` | `70` | % at/above which a limit turns yellow |
